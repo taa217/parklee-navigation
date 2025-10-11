@@ -57,7 +57,7 @@ const Dashboard: React.FC = () => {
                 const zonesCount = await zonesResponse.json();
 
                 // Fetch events count
-                const eventsResponse = await fetch(`${BASE_URL}/analytics/api/analytics/events/count`, {
+                const eventsResponse = await fetch(`${BASE_URL}/metrics/events/count`, {
                     headers: {
                         'accept': 'application/json'
                     }
