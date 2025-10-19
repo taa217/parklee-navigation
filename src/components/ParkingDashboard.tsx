@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Car, MapPin, Users, Calendar, ParkingCircle, CarFront, Gauge, Mic, Search, ChevronDown, Clock } from 'lucide-react';
+import { Car, MapPin, Users, Calendar, ParkingCircle, CarFront, Gauge, Mic, Search, ChevronDown, Clock, Compass, Navigation2, SlidersHorizontal, Map as MapIcon } from 'lucide-react';
 import Button from './ui/button';
 import { useAuth } from '../authentication/AuthProvider';
 import { BASE_URL } from '../api';
@@ -71,6 +71,10 @@ const ParkingDashboard: React.FC = () => {
   const [showEventDropdown, setShowEventDropdown] = useState(false);
   const [showReserveModal, setShowReserveModal] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userPosition, setUserPosition] = useState<{ lat: number; lng: number } | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [sortBy, setSortBy] = useState<'nearest' | 'availability' | 'occupancy'>('nearest');
+  const [onlyWithSpace, setOnlyWithSpace] = useState(true);
 
   // New state for custom alerts/messages
   const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' | null }>({ text: '', type: null });
@@ -139,7 +143,35 @@ const ParkingDashboard: React.FC = () => {
     }
 
     fetchData();
+    const interval = setInterval(fetchData, 10000); // lightweight polling for live occupancy
+    return () => clearInterval(interval);
   }, [userId, role]);
+
+  // --- Geolocation (for "Nearest" sorting and distance display) ---
+  const requestUserLocation = () => {
+    if (!('geolocation' in navigator)) return;
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setIsLocating(false);
+      },
+      () => setIsLocating(false),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  const toRadians = (deg: number) => (deg * Math.PI) / 180;
+  const computeDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371; // km
+    const dLat = toRadians(lat2 - lat1);
+    const dLon = toRadians(lon2 - lon1);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
 
   // --- Reservation Logic ---
   const handleReserveSpot = async () => {
@@ -228,9 +260,35 @@ const ParkingDashboard: React.FC = () => {
     zone.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const availableZonesWithSpace = filteredAndSearchedZones.filter(zone =>
-    (zone.total_spots - zone.reserved_spots - zone.occupied_spots) > 0
-  );
+  const zonesAfterAvailability = onlyWithSpace
+    ? filteredAndSearchedZones.filter(zone => (zone.total_spots - zone.reserved_spots - zone.occupied_spots) > 0)
+    : filteredAndSearchedZones;
+
+  const zonesWithMeta = useMemo(() => zonesAfterAvailability.map(zone => {
+    const available = zone.total_spots - zone.reserved_spots - zone.occupied_spots;
+    const occupancy = ((zone.reserved_spots + zone.occupied_spots) / zone.total_spots) * 100;
+    const distanceKm = userPosition
+      ? computeDistanceKm(userPosition.lat, userPosition.lng, zone.latitude, zone.longitude)
+      : null;
+    return { zone, available, occupancy, distanceKm };
+  }), [zonesAfterAvailability, userPosition]);
+
+  const sortedZones = useMemo(() => {
+    const copy = [...zonesWithMeta];
+    if (sortBy === 'nearest') {
+      copy.sort((a, b) => {
+        if (a.distanceKm === null && b.distanceKm === null) return 0;
+        if (a.distanceKm === null) return 1;
+        if (b.distanceKm === null) return -1;
+        return a.distanceKm - b.distanceKm;
+      });
+    } else if (sortBy === 'availability') {
+      copy.sort((a, b) => b.available - a.available);
+    } else if (sortBy === 'occupancy') {
+      copy.sort((a, b) => a.occupancy - b.occupancy);
+    }
+    return copy;
+  }, [zonesWithMeta, sortBy]);
 
   const filteredEvents = events.filter(event =>
     event.name.toLowerCase().includes(eventSearchQuery.toLowerCase()) ||
@@ -439,10 +497,50 @@ const ParkingDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Zone Search Section */}
+      {/* Zone Search Section */
+      {/* Controls: search, sort, availability toggle, locate, map view */}
       <div className="bg-white shadow rounded-lg p-6 space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <h3 className="text-lg font-semibold text-gray-800">Parking Zones</h3>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <h3 className="text-lg font-semibold text-gray-800">Parking Zones</h3>
+              {(eventSearchQuery || selectedEventId) && (
+                <span className="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-700">Filtered by event</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard/map')} className="text-gray-700">
+                <MapIcon className="h-4 w-4 mr-1" /> Map view
+              </Button>
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-gray-700">Sort</label>
+                <select
+                  className="border rounded-md px-2 py-1 text-sm"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                >
+                  <option value="nearest">Nearest</option>
+                  <option value="availability">Most available</option>
+                  <option value="occupancy">Lowest occupancy</option>
+                </select>
+              </div>
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700 select-none">
+                <input type="checkbox" className="rounded" checked={onlyWithSpace} onChange={(e) => setOnlyWithSpace(e.target.checked)} />
+                Only with space
+              </label>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={requestUserLocation}
+                disabled={isLocating}
+                className="text-gray-700"
+              >
+                <Compass className={`h-4 w-4 mr-1 ${isLocating ? 'animate-spin' : ''}`} />
+                {userPosition ? 'Update location' : 'Use my location'}
+              </Button>
+            </div>
+          </div>
+
           <div className="relative flex items-center">
             <Search className="absolute left-3 h-4 w-4 text-gray-400" />
             <input
@@ -475,12 +573,9 @@ const ParkingDashboard: React.FC = () => {
           </div>
         </div>
 
-        {availableZonesWithSpace.length > 0 ? (
+        {sortedZones.length > 0 ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {availableZonesWithSpace.map((zone) => {
-              const occupancy = ((zone.reserved_spots + zone.occupied_spots) / zone.total_spots) * 100;
-              const available = zone.total_spots - zone.reserved_spots - zone.occupied_spots;
-
+            {sortedZones.map(({ zone, available, occupancy, distanceKm }) => {
               const occupancyColor = occupancy < 50 ? '#34d399' : occupancy < 80 ? '#fbbf24' : '#f87171';
               const buttonColor = occupancyColor === '#34d399' ? 'bg-green-500 hover:bg-green-600 text-white' :
                 occupancyColor === '#fbbf24' ? 'bg-yellow-500 hover:bg-yellow-600 text-white' :
@@ -492,9 +587,16 @@ const ParkingDashboard: React.FC = () => {
                   id={`zone-${zone.name.replace(' ', '-')}`}
                   className={`rounded-xl p-4 shadow-sm flex flex-col space-y-3 bg-gray-50`}
                 >
-                  <div className="flex items-center gap-2">
-                    <ParkingCircle className="text-gray-700" />
-                    <h4 className="text-lg font-bold text-gray-800">{zone.name}</h4>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <ParkingCircle className="text-gray-700" />
+                      <h4 className="text-lg font-bold text-gray-800">{zone.name}</h4>
+                    </div>
+                    {typeof distanceKm === 'number' && (
+                      <div className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 whitespace-nowrap">
+                        {distanceKm < 1 ? `${Math.round(distanceKm * 1000)} m` : `${distanceKm.toFixed(1)} km`} away
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-700">
                     <CarFront className="w-4 h-4" />
@@ -513,12 +615,21 @@ const ParkingDashboard: React.FC = () => {
                       }}
                     />
                   </div>
-                  <Button
-                    className={`${buttonColor} mt-4 w-full`}
-                    onClick={() => handleViewSpots(zone)}
-                  >
-                    Select Spot
-                  </Button>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <Button
+                      className={`${buttonColor} w-full`}
+                      onClick={() => handleViewSpots(zone)}
+                    >
+                      Select Spot
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => handleNavigate(zone)}
+                    >
+                      <Navigation2 className="h-4 w-4 mr-1" /> Navigate
+                    </Button>
+                  </div>
                 </div>
               );
             })}
