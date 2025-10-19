@@ -497,7 +497,7 @@ const ParkingDashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Zone Search Section */
+      {/* Zone Search Section */}
       {/* Controls: search, sort, availability toggle, locate, map view */}
       <div className="bg-white shadow rounded-lg p-6 space-y-4">
         <div className="flex flex-col gap-4">
