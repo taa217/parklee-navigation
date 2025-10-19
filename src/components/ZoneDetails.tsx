@@ -190,9 +190,9 @@ const ZoneDetails: React.FC = () => {
               <Button
                 className="mt-1"
                 onClick={() => handleNavigateToSpot(spot)}
-                disabled={spot.status === 'occupied'}
+                disabled={spot.status !== 'empty'}
               >
-                {spot.status === 'occupied' ? 'Occupied' : 'Navigate to this spot'}
+                {spot.status === 'occupied' ? 'Occupied' : spot.status === 'reserved' ? 'Reserved' : 'Navigate to this spot'}
               </Button>
               <p className="text-xs text-gray-500">Navigation guides you to the zone entrance. Follow signage to your spot.</p>
             </div>
