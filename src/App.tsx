@@ -8,6 +8,7 @@ import SignUp from './authentication/signUp';
 import Dashboard from './lib/pages/Dashboard';
 import ParkingDashboard from './components/ParkingDashboard';
 import ParkingMap from './components/ParkingMap';
+import ZoneDetails from './components/ZoneDetails';
 import EventAlerts from './components/EventAlerts';
 import QuickActions from './components/QuickActions';
 import Reservations from './components/Reservations';
@@ -31,6 +32,7 @@ const App = () => {
           {/* Nested routes rendered inside Dashboard's <Outlet /> */}
           <Route path="dashboard" element={<ParkingDashboard />} />
           <Route path="map" element={<ParkingMap />} />
+          <Route path="zones/:zoneId" element={<ZoneDetails />} />
           <Route path="events" element={<Events/>} />
           <Route path="reservations" element={<Reservations />} />
         </Route>

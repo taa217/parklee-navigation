@@ -480,6 +480,24 @@ const ParkingMap: React.FC = () => {
 
   return (
     <div className="relative">
+      {/* Selected spot overlay */}
+      {(() => {
+        try {
+          const raw = localStorage.getItem('selectedSpot');
+          if (!raw) return null;
+          const spot = JSON.parse(raw) as { lot_name: string; spot_number: string; is_vip?: boolean };
+          return (
+            <div className="absolute top-4 right-4 z-10">
+              <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-lg p-3 text-sm text-gray-700">
+                <div className="font-semibold text-gray-900">Selected Spot</div>
+                <div>{spot.lot_name} • Spot {spot.spot_number} {spot.is_vip ? '(VIP)' : ''}</div>
+              </div>
+            </div>
+          );
+        } catch {
+          return null;
+        }
+      })()}
       {locationStatus === 'loading' && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 text-lg font-semibold bg-white p-4 rounded-lg shadow-md">
           Fetching your location...

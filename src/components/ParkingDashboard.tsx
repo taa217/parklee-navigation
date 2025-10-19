@@ -198,6 +198,10 @@ const ParkingDashboard: React.FC = () => {
     navigate('/dashboard/map');
   };
 
+  const handleViewSpots = (zone: ZoneOccupancy) => {
+    navigate(`/dashboard/zones/${zone.id}`);
+  };
+
   // --- UI Logic ---
   const handleEventSelect = (event: ApiEvent) => {
     setEventSearchQuery(event.name);
@@ -511,9 +515,9 @@ const ParkingDashboard: React.FC = () => {
                   </div>
                   <Button
                     className={`${buttonColor} mt-4 w-full`}
-                    onClick={() => handleNavigate(zone)}
+                    onClick={() => handleViewSpots(zone)}
                   >
-                    Navigate Here
+                    Select Spot
                   </Button>
                 </div>
               );
